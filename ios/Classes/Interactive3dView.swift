@@ -12,6 +12,7 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
     private var originalMaterials: [SCNNode: SCNMaterial] = [:]
     private var cameraNode: SCNNode?
     private var pendingPreselectedEntities: [String]?
+    private var nodeOpacities: [SCNNode: CGFloat] = [:]
     private var patchColors: [[String: Any]]?
     private var selectionColor: [Double]?
 
@@ -133,6 +134,25 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
                 self?.unselectEntities(entityIds: entityIds)
                 result(nil)
             }
+            
+        case "setPartGroupVisibility":
+             guard let args = call.arguments as? [String: Any],
+                   let group = args["group"] as? [String: Any],
+                   let visibility = args["visibility"] as? [String: Bool],
+                   let title = group["title"] as? String,
+                   let isVisible = visibility[title] else {
+                 result(FlutterError(
+                     code: "INVALID_ARGUMENT",
+                     message: "Invalid group or visibility data",
+                     details: nil
+                 ))
+                 return
+             }
+
+             DispatchQueue.main.async { [weak self] in
+                 self?.setPartGroupVisibility(group: group, isVisible: isVisible)
+                 result(nil)
+             }
 
         default:
             result(FlutterMethodNotImplemented)
@@ -157,8 +177,13 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
             NSLog("Successfully loaded GLB with SCNSceneSource")
         } catch {
             NSLog("SCNSceneSource failed: \(error.localizedDescription). Trying GLTFSceneSource.")
-            let tempDir = NSTemporaryDirectory()
+            
+            // TODO(wtrzasko): Add option to select if it is from assets or from files
+            let tempDir = URL.cachesDirectory.path();
+//            let tempDir = NSTemporaryDirectory()
+            
             let tempFilePath = tempDir.appending("model.glb")
+            
             do {
                 try modelBytes.write(to: URL(fileURLWithPath: tempFilePath))
                 defer { try? FileManager.default.removeItem(atPath: tempFilePath) }
@@ -201,7 +226,6 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
             material.normal.mipFilter = .linear
             material.normal.intensity = 1.0
             
-            
             scene.rootNode.addChildNode(boxNode)
         }
 
@@ -210,7 +234,7 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
             ambientLight.light = SCNLight()
             ambientLight.light!.type = .ambient
             ambientLight.light!.color = UIColor.white
-            ambientLight.light!.intensity = 1000
+            ambientLight.light!.intensity = 100
             scene.rootNode.addChildNode(ambientLight)
 
             let directionalLight = SCNNode()
@@ -225,15 +249,54 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
         }
 
         scnView.scene = scene
+        
+        if !hasCameraNodes(in: scene.rootNode) {
+            let cameraNode = SCNNode()
+            cameraNode.camera = SCNCamera()
+            scene.rootNode.addChildNode(cameraNode)
+            
+            self.cameraNode = cameraNode
+            scnView.pointOfView = cameraNode
+            NSLog("Added default camera")
+        }
 
         applyPreselectedEntities()
+        
+        addDebugCube(color: UIColor.red)
+        addDebugCube(color: UIColor.green, position: SCNVector3(x: 5, y: 0, z: 0))
+        
+        applyDefaultCameraPosition()
 
         printSceneHierarchy(scene.rootNode, level: 0)
         NSLog("Camera point of view: \(scnView.pointOfView?.name ?? "None")")
         NSLog("Scene node count: \(scene.rootNode.childNodes.count)")
         NSLog("SCNView bounds: \(scnView.bounds)")
     }
-
+    
+    private func applyDefaultCameraPosition() {
+        cameraNode?.position = SCNVector3(x: -8.5, y: 4, z: 9)
+        cameraNode?.camera!.zNear = 0.01
+        
+        let targetPosition = SCNVector3(5, 2, 0)
+        cameraNode?.look(at: targetPosition)
+    }
+    
+    private func addDebugCube(color: UIColor, position: SCNVector3 = SCNVector3(0, 0, 0), size: CGSize = CGSize(width: 2.0, height: 2.0)) {
+        NSLog("Warning: Model has no geometry, adding blue test cube")
+        let box = SCNBox(width: size.width, height: size.height, length: size.height, chamferRadius: 0)
+        let material = SCNMaterial()
+        material.diffuse.contents = color
+        material.isDoubleSided = true
+        box.materials = [material]
+        let boxNode = SCNNode(geometry: box)
+        boxNode.position = position
+        material.diffuse.contentsTransform = SCNMatrix4MakeScale(1, 1, 1)
+        material.normal.mipFilter = .linear
+        material.normal.intensity = 1.0
+        
+        scnView.scene?.rootNode.addChildNode(boxNode)
+    }
+ 
     private func applyPreselectedEntities() {
         guard let preselectedEntities = pendingPreselectedEntities, !preselectedEntities.isEmpty else {
             NSLog("No preselected entities to apply")
@@ -295,6 +358,18 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
         }
         for child in node.childNodes {
             if hasLightNodes(in: child) {
+                return true
+            }
+        }
+        return false
+    }
+    
+    private func hasCameraNodes(in node: SCNNode) -> Bool {
+        if node.camera != nil {
+            return true
+        }
+        for child in node.childNodes {
+            if hasCameraNodes(in: child) {
                 return true
             }
         }
@@ -553,5 +628,55 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
         scene.rootNode.addChildNode(directionalLight)
 
         NSLog("Successfully loaded HDR/EXR background with size \(finalSize), applied neutral lighting")
+    }
+    
+    private func setPartGroupVisibility(group: [String: Any], isVisible: Bool) {
+        guard let scene = scnView.scene else {
+            NSLog("No scene available to set visibility")
+            return
+        }
+
+        guard let title = group["title"] as? String,
+              let names = group["names"] as? [String] else {
+            NSLog("Invalid group data for title: \(group["title"] ?? "Unknown")")
+            return
+        }
+
+        let opacity: Float = isVisible ? 1.0 : 0.0
+        NSLog("Setting visibility for group '\(title)' to \(isVisible ? "visible" : "invisible") (opacity: \(opacity))")
+
+        var updatedNodes = 0
+        scene.rootNode.enumerateChildNodes { (node, _) in
+            if let nodeName = node.name, names.contains(nodeName) {
+                // Update the named node
+                node.opacity = CGFloat(opacity)
+                node.isHidden = !isVisible // Ensure invisibility
+                self.nodeOpacities[node] = CGFloat(opacity) // Track opacity
+                if node.geometry != nil {
+                    updatedNodes += 1
+                    NSLog("Set opacity to \(opacity) and hidden=\(!isVisible) for geometry node: \(nodeName)")
+                } else {
+                    NSLog("Set opacity to \(opacity) and hidden=\(!isVisible) for non-geometry node: \(nodeName)")
+                }
+                // Update all child geometry nodes
+                node.enumerateChildNodes { (child, _) in
+                    if child.geometry != nil {
+                        child.opacity = CGFloat(opacity)
+                        child.isHidden = !isVisible
+                        self.nodeOpacities[child] = CGFloat(opacity)
+                        updatedNodes += 1
+                        NSLog("Set opacity to \(opacity) and hidden=\(!isVisible) for child geometry node: \(child.name ?? "Unnamed")")
+                    }
+                }
+            }
+        }
+
+        if updatedNodes == 0 {
+            NSLog("No nodes updated for group '\(title)'. Expected names: \(names.joined(separator: ", "))")
+        } else {
+            NSLog("Updated \(updatedNodes) nodes for group '\(title)'")
+        }
+
+        scnView.setNeedsDisplay()
     }
 }
