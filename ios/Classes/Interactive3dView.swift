@@ -262,8 +262,8 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
 
         applyPreselectedEntities()
         
-        addDebugCube(color: UIColor.red)
-        addDebugCube(color: UIColor.green, position: SCNVector3(x: 5, y: 0, z: 0))
+//        addDebugCube(color: UIColor.red)
+//        addDebugCube(color: UIColor.green, position: SCNVector3(x: 5, y: 0, z: 0))
         
         applyDefaultCameraPosition()
 
