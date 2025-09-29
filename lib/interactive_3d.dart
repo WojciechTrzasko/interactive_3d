@@ -44,7 +44,6 @@ class Interactive3d extends StatefulWidget {
   /// URL to the skybox texture file of type .hdr/.exr used for the 3D environment from the network.
   final String? iOSBackgroundEnvUrl;
 
-
   /// A list of additional resource file paths required for `.gltf` models (e.g., textures, binary files).
   /// Defaults to an empty list.
   final List<String> resources;
@@ -112,10 +111,23 @@ class Interactive3dState extends State<Interactive3d> {
   @override
   void didUpdateWidget(Interactive3d oldWidget) {
     super.didUpdateWidget(oldWidget);
+
     // Reattach the controller if it changes
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.detach();
       widget.controller?.attach(this);
+    }
+
+    final hasChangedEnvPath =
+        oldWidget.iOSBackgroundEnvPath != widget.iOSBackgroundEnvPath;
+    final hasChangedEnvUrl =
+        oldWidget.iOSBackgroundEnvUrl != widget.iOSBackgroundEnvUrl;
+
+    if ((hasChangedEnvPath || hasChangedEnvUrl) && Platform.isIOS) {
+      _platform!.loadHdrBackground(
+        backgroundPath: widget.iOSBackgroundEnvPath,
+        backgroundUrl: widget.iOSBackgroundEnvUrl,
+      );
     }
   }
 
@@ -159,7 +171,9 @@ class Interactive3dState extends State<Interactive3d> {
     Interactive3dPlatform.verify(_platform!);
 
     // Listen for selection changes.
-    _selectionSubscription = _platform!.selectionStream.listen(_onSelectionChanged);
+    _selectionSubscription = _platform!.selectionStream.listen(
+      _onSelectionChanged,
+    );
 
     // Create resources if needed (for .gltf only).
     Map<String, ByteData> resources = {};
@@ -178,7 +192,7 @@ class Interactive3dState extends State<Interactive3d> {
     );
 
     // Load environment.
-    if(Platform.isAndroid) {
+    if (Platform.isAndroid) {
       await _platform!.loadEnvironment(
         iblPath: widget.iblPath,
         iblUrl: widget.iblUrl,
@@ -192,7 +206,7 @@ class Interactive3dState extends State<Interactive3d> {
       );
     }
 
-    if(widget.defaultZoom != null) {
+    if (widget.defaultZoom != null) {
       await setZoom(widget.defaultZoom);
     }
   }
@@ -210,9 +224,15 @@ class Interactive3dState extends State<Interactive3d> {
     // Identify the base directory for assets or assume same directory for URLs.
     String baseDir = '';
     if (widget.modelPath != null) {
-      baseDir = widget.modelPath!.substring(0, widget.modelPath!.lastIndexOf('/') + 1);
+      baseDir = widget.modelPath!.substring(
+        0,
+        widget.modelPath!.lastIndexOf('/') + 1,
+      );
     } else if (widget.modelUrl != null) {
-      baseDir = widget.modelUrl!.substring(0, widget.modelUrl!.lastIndexOf('/') + 1);
+      baseDir = widget.modelUrl!.substring(
+        0,
+        widget.modelUrl!.lastIndexOf('/') + 1,
+      );
     }
 
     List<String> candidates = widget.resources;
@@ -243,7 +263,9 @@ class Interactive3dState extends State<Interactive3d> {
     if (response.statusCode == 200) {
       return ByteData.view(response.bodyBytes.buffer);
     } else {
-      throw Exception('Failed to load resource: $url, status: ${response.statusCode}');
+      throw Exception(
+        'Failed to load resource: $url, status: ${response.statusCode}',
+      );
     }
   }
 

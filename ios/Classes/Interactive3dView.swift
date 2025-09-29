@@ -228,27 +228,12 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
             
             scene.rootNode.addChildNode(boxNode)
         }
+        
+        scnView.scene = scene
 
         if !hasLightNodes(in: scene.rootNode) {
-            let ambientLight = SCNNode()
-            ambientLight.light = SCNLight()
-            ambientLight.light!.type = .ambient
-            ambientLight.light!.color = UIColor.white
-            ambientLight.light!.intensity = 100
-            scene.rootNode.addChildNode(ambientLight)
-
-            let directionalLight = SCNNode()
-            directionalLight.light = SCNLight()
-            directionalLight.light!.type = .directional
-            directionalLight.light!.color = UIColor.white
-            directionalLight.light!.intensity = 2000
-            directionalLight.position = SCNVector3(x: 10, y: 10, z: 10)
-            directionalLight.look(at: SCNVector3Zero)
-            scene.rootNode.addChildNode(directionalLight)
-            NSLog("Added default lighting")
+            addDefaultLighting()
         }
-
-        scnView.scene = scene
         
         if !hasCameraNodes(in: scene.rootNode) {
             let cameraNode = SCNNode()
@@ -271,6 +256,25 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
         NSLog("Camera point of view: \(scnView.pointOfView?.name ?? "None")")
         NSLog("Scene node count: \(scene.rootNode.childNodes.count)")
         NSLog("SCNView bounds: \(scnView.bounds)")
+    }
+    
+    private func addDefaultLighting() {
+        let ambientLight = SCNNode()
+        ambientLight.light = SCNLight()
+        ambientLight.light!.type = .ambient
+        ambientLight.light!.color = UIColor.white
+        ambientLight.light!.intensity = 100
+        scnView.scene?.rootNode.addChildNode(ambientLight)
+
+        let directionalLight = SCNNode()
+        directionalLight.light = SCNLight()
+        directionalLight.light!.type = .directional
+        directionalLight.light!.color = UIColor.white
+        directionalLight.light!.intensity = 2000
+        directionalLight.position = SCNVector3(x: 10, y: 10, z: 10)
+        directionalLight.look(at: SCNVector3Zero)
+        scnView.scene?.rootNode.addChildNode(directionalLight)
+        NSLog("Added default lighting")
     }
     
     private func applyDefaultCameraPosition() {
@@ -608,24 +612,8 @@ class Interactive3DPlatformView: NSObject, FlutterPlatformView, FlutterStreamHan
                 NSLog("Removed existing light node: \(node.name ?? "Unnamed")")
             }
         }
-
-        // Add a neutral ambient light
-        let ambientLight = SCNNode()
-        ambientLight.light = SCNLight()
-        ambientLight.light!.type = .ambient
-        ambientLight.light!.color = UIColor.white
-        ambientLight.light!.intensity = 600 // Slightly increased for better illumination
-        scene.rootNode.addChildNode(ambientLight)
-
-        // Add a directional light for consistent model lighting
-        let directionalLight = SCNNode()
-        directionalLight.light = SCNLight()
-        directionalLight.light!.type = .directional
-        directionalLight.light!.color = UIColor.white
-        directionalLight.light!.intensity = 1000
-        directionalLight.position = SCNVector3(x: 10, y: 10, z: 10)
-        directionalLight.look(at: SCNVector3Zero)
-        scene.rootNode.addChildNode(directionalLight)
+        
+        addDefaultLighting()
 
         NSLog("Successfully loaded HDR/EXR background with size \(finalSize), applied neutral lighting")
     }
