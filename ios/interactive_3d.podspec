@@ -16,8 +16,7 @@ A plugin to render interactive 3D model in .gLTF or .glb
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
   s.dependency 'GLTFSceneKit', '~> 0.3.0'
-  s.platform = :ios, '16.0'
-  s.ios.deployment_target  = '16.0'
+  s.ios.deployment_target = '16.0'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = {
